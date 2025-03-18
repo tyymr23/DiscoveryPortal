@@ -6,6 +6,7 @@ import axios from "axios";
 import { Card, CardHeader, CardTitle, CardContent } from "./Card";
 import { Button } from "./Button";
 import EditProject from "./EditProject";
+import RunButton from "./RunButton";
 
 const CollectionDetails = () => {
   const [formData, setFormData] = useState({
@@ -211,6 +212,7 @@ const CollectionDetails = () => {
           <Card>
             <CardHeader>
               <CardTitle>{collectionName}</CardTitle>
+              <RunButton />
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
