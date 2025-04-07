@@ -92,6 +92,14 @@ CREATE TABLE `projects` (
 ) ENGINE=InnoDB AUTO_INCREMENT=295 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
+CREATE TABLE `project_files` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `project_id` INT NOT NULL,
+  `file_name` VARCHAR(255) NOT NULL,
+  `project_file` LONGBLOB NOT NULL,
+  FOREIGN KEY (`project_id`) REFERENCES projects(`project_id`) ON DELETE CASCADE
+);
+
 --
 -- Dumping data for table `projects`
 --
