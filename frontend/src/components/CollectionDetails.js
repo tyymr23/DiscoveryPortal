@@ -39,6 +39,17 @@ const CollectionDetails = () => {
     localStorage.getItem("project") || ""
   );
   const navigate = useNavigate();
+  const [runConfig, setRunConfig] = useState({ // required fields for run configuration
+    zipFile: null,
+    projectName: collectionName || "",
+    volumes: "{}",
+    frontendPort: "",
+    dockerfilePath: "",
+  });
+
+  useEffect(() => { // just to make sure the collection name is always the project name for API use
+    setRunConfig((prev) => ({ ...prev, projectName: collectionName }));
+  }, [collectionName]);
 
   useEffect(() => {
     const role = localStorage.getItem("userRole");
@@ -149,11 +160,7 @@ const CollectionDetails = () => {
         );
         if (response.status === 200) {
           alert("Project deleted successfully");
-          if (userRole === "admin") {
-            navigate("/home");
-          } else {
-            navigate("/home");
-          }
+          navigate("/home");
         }
       } catch (error) {
         alert(`Error deleting project: ${error.message}`);
@@ -172,14 +179,14 @@ const CollectionDetails = () => {
       return;
     }
 
-    const formData = new FormData();
-    formData.append("files", selectedFile); // 'files' is the key expected by the server
+    const fileFormData = new FormData();
+    fileFormData.append("files", selectedFile); // 'files' is the key expected by the server
 
     try {
       setLoading(true); // Optional: Set loading state to show a loading indicator
       const uploadResponse = await axios.post(
         `${process.env.REACT_APP_API_BASE_URL}/upload/${collectionName}`,
-        formData,
+        fileFormData,
         {
           headers: {
             "Content-Type": "multipart/form-data",
@@ -204,6 +211,15 @@ const CollectionDetails = () => {
     }
   };
 
+  // these handle the updates to the run configs
+  const handleRunZipChange = (e) => {
+    setRunConfig((prev) => ({ ...prev, zipFile: e.target.files[0] }));
+  };
+  const handleRunInputChange = (e) => {
+    const { name, value } = e.target;
+    setRunConfig((prev) => ({ ...prev, [name]: value }));
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -212,7 +228,7 @@ const CollectionDetails = () => {
           <Card>
             <CardHeader>
               <CardTitle>{collectionName}</CardTitle>
-              <RunButton />
+              <RunButton runData={runConfig} />
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
@@ -354,6 +370,73 @@ const CollectionDetails = () => {
                   <Button onClick={handleFileUpload} disabled={!selectedFile}>
                     Upload File
                   </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Run Project Configuration</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div>
+                  <label htmlFor="runZipFile" className="block font-semibold">
+                    Zip File: (Select a .zip file containing your project)
+                  </label>
+                  <input
+                    type="file"
+                    id="runZipFile"
+                    accept=".zip"
+                    onChange={handleRunZipChange}
+                    className="mt-1 block"
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="runVolumes" className="block font-semibold">
+                    Volumes (JSON format):
+                  </label>
+                  <textarea
+                    id="runVolumes"
+                    name="volumes"
+                    value={runConfig.volumes}
+                    onChange={handleRunInputChange}
+                    placeholder='e.g., {"C:/projects/myproject": "/app"}'
+                    className="mt-1 block w-full"
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="runFrontendPort" className="block font-semibold">
+                    Frontend Port (Enter the frontend port your app runs on):
+                  </label>
+                  <input
+                    type="number"
+                    id="runFrontendPort"
+                    name="frontendPort"
+                    value={runConfig.frontendPort}
+                    onChange={handleRunInputChange}
+                    placeholder="e.g., 3000"
+                    className="mt-1 block w-full"
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="runDockerfilePath" className="block font-semibold">
+                    Dockerfile Path (Relative path inside the unzipped folder):
+                  </label>
+                  <input
+                    type="text"
+                    id="runDockerfilePath"
+                    name="dockerfilePath"
+                    value={runConfig.dockerfilePath}
+                    onChange={handleRunInputChange}
+                    placeholder="e.g., ./Dockerfile"
+                    className="mt-1 block w-full"
+                    required
+                  />
                 </div>
               </div>
             </CardContent>

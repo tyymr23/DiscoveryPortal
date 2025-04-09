@@ -1,30 +1,63 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
-const RunButton = () => {
+const RunButton = ({ runData }) => {
     const [projectUrl, setProjectUrl] = useState("")
     const [loading, setLoading] = useState(false)
 
+    useEffect(() => {
+        console.log("RunData recieved in RunButton:", runData);
+    }, [runData])
+
+    const isRunConfigComplete =
+        runData.zipFile &&
+        runData.projectName.trim() !== "" &&
+        runData.volumes.trim() !== "" &&
+        runData.frontendPort.toString().trim() !== "" &&
+        runData.dockerfilePath.trim() !== "";
+
+
     const handleClick = async () => {
         setLoading(true)
-        // we will replace this with API call later
-        await new Promise((resolve) => setTimeout(resolve, 3000))
-        const url = "https://www.google.com/"
-        setProjectUrl(url)
-        setLoading(false)
+        const formData = new FormData();
+        formData.append('zipFile', runData.zipFile);
+        formData.append('projectName', runData.projectName);
+        formData.append('volumes', runData.volumes);
+        formData.append('frontendPort', runData.frontendPort);
+        formData.append('dockerfilePath', runData.dockerfilePath);
+
+        try {
+            const response = await fetch(
+                `${process.env.REACT_APP_API_BASE_URL}/projects/${runData.projectName}/run`,
+                {
+                    method: 'POST',
+                    body: formData,
+                }
+            );
+            const data = await response.json();
+            if (data.url) {
+                setProjectUrl(data.url);
+            } else {
+                console.error('No URL returned from API:', data);
+            }
+        } catch (error) {
+            console.error('Error running the project:', error);
+        } finally {
+            setLoading(false);
+        }
     }
 
     return (
         <div className='flex flex-row items-center gap-4 pt-4'>
             <button
                 className={`w-40 py-2 rounded-lg transition duration-300 ${
-                    loading || projectUrl
+                    loading || projectUrl || !isRunConfigComplete
                     ? "bg-gray-400 cursor-not-allowed"
                     : "bg-orange-400 text-white hover:bg-orange-500"
                 }`}
                 onClick={handleClick}
-                disabled={loading || projectUrl}
+                disabled={loading || projectUrl || !isRunConfigComplete}
             >
-                {loading ? "Loading..." : "Run"}
+                {loading ? "Loading..." : "Run Project"}
             </button>
 
             {projectUrl && (
@@ -42,7 +75,6 @@ const RunButton = () => {
             )}
         </div>
     )
-
 }
 
 export default RunButton;
