@@ -46,6 +46,7 @@ const CollectionDetails = () => {
     frontendPort: "",
     dockerfilePath: "",
   });
+  const [imageSubmitted, setImageSubmitted] = useState(false);
 
   useEffect(() => { // just to make sure the collection name is always the project name for API use
     setRunConfig((prev) => ({ ...prev, projectName: collectionName }));
@@ -220,6 +221,43 @@ const CollectionDetails = () => {
     setRunConfig((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleImageSubmit = async () => {
+    if (
+      !runConfig.zipFile ||
+      runConfig.volumes.trim() === "" ||
+      runConfig.frontendPort.toString().trim() === "" ||
+      runConfig.dockerfilePath.trim() === ""
+    ) {
+      alert("Please fill in all docker image data fields.");
+      return;
+    }
+    const formData = new FormData();
+    formData.append("zipFile", runConfig.zipFile);
+    formData.append("volumes", runConfig.volumes);
+    formData.append("frontendPort", runConfig.frontendPort);
+    formData.append("dockerfilePath", runConfig.dockerfilePath);
+    try {
+      const response = await fetch(
+        `${process.env.REACT_APP_API_BASE_URL}/projects/${runConfig.projectName}/image`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+      const data = await response.json();
+      if (response.ok) {
+        setImageSubmitted(true);
+        alert("Docker image data submitted successfully.");
+      } else {
+        console.error("Error submitting image data:", data);
+        alert("Error submitting image data.");
+      }
+    } catch (error) {
+      console.error("Error in image submission:", error);
+      alert("Error submitting image data.");
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -228,7 +266,7 @@ const CollectionDetails = () => {
           <Card>
             <CardHeader>
               <CardTitle>{collectionName}</CardTitle>
-              <RunButton runData={runConfig} />
+              <RunButton runData={runConfig} imageSubmitted={imageSubmitted} />
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
@@ -377,13 +415,13 @@ const CollectionDetails = () => {
 
           <Card>
             <CardHeader>
-              <CardTitle>Run Project Configuration</CardTitle>
+              <CardTitle>Docker Image Configuration</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
                 <div>
                   <label htmlFor="runZipFile" className="block font-semibold">
-                    Zip File: (Select a .zip file containing your project)
+                    Zip File (Select your project .zip file):
                   </label>
                   <input
                     type="file"
@@ -425,7 +463,7 @@ const CollectionDetails = () => {
                 </div>
                 <div>
                   <label htmlFor="runDockerfilePath" className="block font-semibold">
-                    Dockerfile Path (Relative path inside the unzipped folder):
+                    Dockerfile Path (relative path inside the unzipped folder):
                   </label>
                   <input
                     type="text"
@@ -440,6 +478,11 @@ const CollectionDetails = () => {
                 </div>
               </div>
             </CardContent>
+            <div className="p-4">
+              <Button onClick={handleImageSubmit} disabled={imageSubmitted}>
+                {imageSubmitted ? "Image Submitted" : "Submit Docker Image Data"}
+              </Button>
+            </div>
           </Card>
 
           {(userRole === "admin" || userRole === "client") && (
