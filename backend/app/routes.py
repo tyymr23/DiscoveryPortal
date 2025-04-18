@@ -1,3 +1,4 @@
+
 from io import BytesIO
 from flask import Blueprint, jsonify, request
 import mysql.connector
@@ -11,7 +12,9 @@ import json
 from .models import Project, Student, Admin, Semester, Client
 import ast
 from flask import Flask, send_from_directory, send_file
-
+import docker
+import redis
+import zipfile
 ## NEW ROUTES FOR SEMESTER:
 #      /semester/create
 #      /semester/close
@@ -24,11 +27,13 @@ def bytes_to_base64_str(b):
 
 load_dotenv()
 
+
 sql_host = os.getenv('MYSQL_HOST')
 sql_user = os.getenv('MYSQL_USER')
 sql_password = os.getenv('MYSQL_PASSWORD')
 sql_db = os.getenv('MYSQL_DB')
 sql_port = int(os.getenv('MYSQL_PORT'))
+upload_dir="/"
 
 def get_db_connection():
     return pymysql.connect(
@@ -436,3 +441,125 @@ def upload_file(project_name):
     except Exception as e:
         logging.error('Error uploading files:', exc_info=e)
         return jsonify({'error': 'Error uploading files'}), 500
+
+
+client=docker.from_env()
+
+redis_client=redis.Redis(host=sql_host, port=6379, db=0)
+
+# build a docker image
+@main.route('/projects/<project_name>/image', methods=['GET','POST'])
+def create_docker_image(project_name):
+    if request.method=='POST':
+        if 'zipFile' not in request.files or "volumes" not in request.form or "frontendPort" not in request.form or "dockerfilePath" not in request.form:
+            return jsonify({'error': 'Data missing in request'}), 400
+
+        zip_file=request.files['zipFile']
+        image_data=request.form
+
+
+        if not zip_file.filename:
+            return jsonify({'error': 'No selected file'}), 400
+
+        if not zip_file.filename.lower().endswith('.zip'):
+            return jsonify({'error': 'Not a zip file'}), 400
+
+        image_name=project_name.strip().lower().replace(" ","_")
+        project_path=os.path.join(upload_dir, image_name)
+        os.makedirs(project_path, exist_ok=True)
+
+        try:
+            with zipfile.ZipFile(zip_file, 'r') as zf:
+                zf.extractall(project_path)
+        except:
+            return jsonify({'error': 'Invalid zip file'}), 400
+        
+        try:
+            client.images.build(
+                path=os.path.join(project_path,image_data["dockerfilePath"]),
+                tag=image_name,
+                rm=True
+            )
+        except:
+            return jsonify({'error': 'Error building image'}), 500
+
+        redis_client.set(project_name,json.dumps(dict(image_data)))
+
+        return jsonify({"message": "Form data saved uploaded"}), 200
+    else:
+       return "" # implement later
+
+# get container if running
+def get_running_container(project_name):
+    container_name=project_name.strip().lower().replace(" ","_")
+    try:
+        container=client.containers.get(container_name)
+        if container.status=='running':
+            return container
+    except:
+        return None
+
+# start  container
+def start_container(project_name):
+    container_data=redis_client.get(project_name)
+    image_name=project_name.strip().lower().replace(" ","_")
+    if container_data:
+        container_data=json.loads(container_data.decode('utf-8'))
+    else:
+        return None
+
+    port=container_data["frontendPort"]
+    volumes={os.path.join(upload_dir,k):{"bind":v,"mode":"rw"} for k,v in json.loads(container_data["volumes"]).items() if k and v}
+    
+    try:
+        container=client.containers.run(
+            image=image_name,
+            name=image_name,
+            ports={port:None},
+            volumes=volumes,
+            remove=True,
+            detach=True
+        )
+        return container
+    except:
+        return None
+
+
+def get_frontend_port(container,project_name):
+    container.reload()
+    container_data=redis_client.get(project_name)
+    if container_data:
+        container_data=json.loads(container_data.decode('utf-8'))
+    else:
+         return None
+    try:
+        port=container_data["frontendPort"]
+        return container.ports[port+'/tcp'][0]['HostPort']
+    except:
+        return None
+    
+# start a container
+@main.route('/projects/<project_name>/run', methods=['GET'])
+def run_project(project_name):
+    container=get_running_container(project_name)
+    if not container:
+        container=start_container(project_name)
+        if not container: return jsonify({'error':'Could not start container'}),400
+    host_port=get_frontend_port(container,project_name)
+    if not host_port: return jsonify({'error':'Error getting frontend port'}),400
+    redis_client.incr(f'{project_name}-active_users')
+    url=f'{sql_host}:{host_port}'
+    return jsonify({'url': url})
+
+
+@main.route('/projects/<project_name>/stop', methods=['POST'])
+def stop_project(project_name):
+    active_users=redis_client.get(f'project:{project_name}-active_users')
+    if active_users is None or int(active_users)==0:
+        container=get_running_container(project_name)
+        if container:
+            container.stop()
+    else:
+        redis_client.decr(f'{project_name}-active_users')
+    return 200
+

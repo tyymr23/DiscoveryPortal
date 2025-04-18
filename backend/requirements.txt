@@ -7,3 +7,5 @@ mysql-connector-python==8.0.33
 pymysql==1.0.3
 cryptography
 gevent>=1.4
+redis
+docker
