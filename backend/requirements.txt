@@ -9,3 +9,4 @@ cryptography
 gevent>=1.4
 redis
 docker
+celery

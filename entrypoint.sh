@@ -17,6 +17,6 @@ EOF
 service mysql restart
 
 cd /backend
-
+celery -A celery_app worker&
 /start.sh
 

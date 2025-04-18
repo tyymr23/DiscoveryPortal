@@ -15,6 +15,9 @@ from flask import Flask, send_from_directory, send_file
 import docker
 import redis
 import zipfile
+from celery_app import celery
+from app.celery_tasks import build_image
+from celery.result import AsyncResult
 ## NEW ROUTES FOR SEMESTER:
 #      /semester/create
 #      /semester/close
@@ -474,20 +477,23 @@ def create_docker_image(project_name):
         except:
             return jsonify({'error': 'Invalid zip file'}), 400
         
-        try:
-            client.images.build(
-                path=os.path.join(project_path,image_data["dockerfilePath"]),
-                tag=image_name,
-                rm=True
-            )
-        except:
-            return jsonify({'error': 'Error building image'}), 500
+        task=build_image.delay(image_name,os.path.join(project_path,image_data['dockerfilePath']))
 
         redis_client.set(project_name,json.dumps(dict(image_data)))
 
-        return jsonify({"message": "Form data saved uploaded"}), 200
+        return jsonify({"taskId": task.id}), 200
     else:
        return "" # implement later
+
+@main.route("/jobs/<task_id>", methods=["GET"])
+def get_status(task_id):
+    res=AsyncResult(task_id, app=celery)
+    payload={"status": res.status}
+    if res.status=="PROGRESS":
+        payload.update(res.info or {})
+    elif res.status in ("SUCCESS", "FAILURE"):
+        payload["result"]=res.result
+    return jsonify(payload)
 
 # get container if running
 def get_running_container(project_name):
@@ -507,9 +513,8 @@ def start_container(project_name):
         container_data=json.loads(container_data.decode('utf-8'))
     else:
         return None
-
     port=container_data["frontendPort"]
-    volumes={os.path.join(upload_dir,k):{"bind":v,"mode":"rw"} for k,v in json.loads(container_data["volumes"]).items() if k and v}
+    volumes={k:{"bind":v,"mode":"rw"} for k,v in json.loads(container_data["volumes"]).items() if k and v}
     
     try:
         container=client.containers.run(
