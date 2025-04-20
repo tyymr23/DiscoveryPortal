@@ -38,15 +38,38 @@ const CollectionDetails = () => {
   const [userProject, setUserProject] = useState(
     localStorage.getItem("project") || ""
   );
+  const [taskId, setTaskId] = useState(null);
+  const [status, setStatus] = useState("idle");
   const navigate = useNavigate();
   const [runConfig, setRunConfig] = useState({ // required fields for run configuration
     zipFile: null,
     projectName: collectionName || "",
-    volumes: "{}",
     frontendPort: "",
     dockerfilePath: "",
   });
   const [imageSubmitted, setImageSubmitted] = useState(false);
+
+
+  useEffect(() => {
+    if (!taskId) return;
+    const timer = setInterval(async () => {
+      const res = await fetch(
+        `${process.env.REACT_APP_API_BASE_URL}/jobs/${taskId}`
+      );
+      const body = await res.json();
+      setStatus(body.status);
+      if (["SUCCESS", "FAILURE"].includes(body.status)) {
+        clearInterval(timer);
+		    if(body.status === "SUCCESS") {
+          setImageSubmitted(true)
+        }
+        else if (body.status === "FAILURE") {
+          alert("Docker image build failed.")
+        }
+      }
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [taskId]);
 
   useEffect(() => { // just to make sure the collection name is always the project name for API use
     setRunConfig((prev) => ({ ...prev, projectName: collectionName }));
@@ -224,7 +247,6 @@ const CollectionDetails = () => {
   const handleImageSubmit = async () => {
     if (
       !runConfig.zipFile ||
-      runConfig.volumes.trim() === "" ||
       runConfig.frontendPort.toString().trim() === "" ||
       runConfig.dockerfilePath.trim() === ""
     ) {
@@ -233,7 +255,6 @@ const CollectionDetails = () => {
     }
     const formData = new FormData();
     formData.append("zipFile", runConfig.zipFile);
-    formData.append("volumes", runConfig.volumes);
     formData.append("frontendPort", runConfig.frontendPort);
     formData.append("dockerfilePath", runConfig.dockerfilePath);
     try {
@@ -244,19 +265,21 @@ const CollectionDetails = () => {
           body: formData,
         }
       );
-      const data = await response.json();
+	  const { taskId } = await response.json();
       if (response.ok) {
-        setImageSubmitted(true);
+        setTaskId(taskId);
+        setStatus("PENDING");
         alert("Docker image data submitted successfully.");
       } else {
-        console.error("Error submitting image data:", data);
         alert("Error submitting image data.");
       }
     } catch (error) {
       console.error("Error in image submission:", error);
+	  setStatus("ERROR");
       alert("Error submitting image data.");
     }
   };
+
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -266,7 +289,7 @@ const CollectionDetails = () => {
           <Card>
             <CardHeader>
               <CardTitle>{collectionName}</CardTitle>
-              <RunButton runData={runConfig} imageSubmitted={imageSubmitted} />
+              <RunButton runData={runConfig} imageSubmitted={imageSubmitted} buildStatus={status} userRole={userRole}/>
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
@@ -429,20 +452,6 @@ const CollectionDetails = () => {
                     accept=".zip"
                     onChange={handleRunZipChange}
                     className="mt-1 block"
-                    required
-                  />
-                </div>
-                <div>
-                  <label htmlFor="runVolumes" className="block font-semibold">
-                    Volumes (JSON format):
-                  </label>
-                  <textarea
-                    id="runVolumes"
-                    name="volumes"
-                    value={runConfig.volumes}
-                    onChange={handleRunInputChange}
-                    placeholder='e.g., {"C:/projects/myproject": "/app"}'
-                    className="mt-1 block w-full"
                     required
                   />
                 </div>
