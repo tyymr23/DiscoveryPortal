@@ -53,19 +53,28 @@ const CollectionDetails = () => {
   useEffect(() => {
     if (!taskId) return;
     const timer = setInterval(async () => {
-      const res = await fetch(
-        `${process.env.REACT_APP_API_BASE_URL}/jobs/${taskId}`
-      );
-      const body = await res.json();
-      setStatus(body.status);
-      if (["SUCCESS", "FAILURE"].includes(body.status)) {
+      try {
+        const res = await fetch(
+          `${process.env.REACT_APP_API_BASE_URL}/jobs/${taskId}`
+        );
+        const body = await res.json();
+        setStatus(body.status);
+        if (["SUCCESS", "FAILURE"].includes(body.status)) {
+          clearInterval(timer);
+          if (body.status === "SUCCESS") {
+            setImageSubmitted(true);
+          } else {
+            alert(
+              "Docker image build failed. Please check your configuration and try again."
+            );
+          }
+        }
+      } catch (error) {
         clearInterval(timer);
-		    if(body.status === "SUCCESS") {
-          setImageSubmitted(true)
-        }
-        else if (body.status === "FAILURE") {
-          alert("Docker image build failed.")
-        }
+        console.error("Error polling build status:", error);
+        alert(
+          "Error checking build status. Please try again later or contact support."
+        );
       }
     }, 2000);
     return () => clearInterval(timer);
@@ -289,7 +298,7 @@ const CollectionDetails = () => {
           <Card>
             <CardHeader>
               <CardTitle>{collectionName}</CardTitle>
-              <RunButton runData={runConfig} imageSubmitted={imageSubmitted} buildStatus={status} userRole={userRole}/>
+              <RunButton runData={runConfig} buildStatus={status} />
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
@@ -436,63 +445,65 @@ const CollectionDetails = () => {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Docker Image Configuration</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="runZipFile" className="block font-semibold">
-                    Zip File (Select your project .zip file):
-                  </label>
-                  <input
-                    type="file"
-                    id="runZipFile"
-                    accept=".zip"
-                    onChange={handleRunZipChange}
-                    className="mt-1 block"
-                    required
-                  />
+          {userRole === "admin" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Docker Image Configuration</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div>
+                    <label htmlFor="runZipFile" className="block font-semibold">
+                      Zip File (Select your project .zip file):
+                    </label>
+                    <input
+                      type="file"
+                      id="runZipFile"
+                      accept=".zip"
+                      onChange={handleRunZipChange}
+                      className="mt-1 block"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="runFrontendPort" className="block font-semibold">
+                      Frontend Port (Enter the frontend port your app runs on):
+                    </label>
+                    <input
+                      type="number"
+                      id="runFrontendPort"
+                      name="frontendPort"
+                      value={runConfig.frontendPort}
+                      onChange={handleRunInputChange}
+                      placeholder="e.g., 3000"
+                      className="mt-1 block w-full"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="runDockerfilePath" className="block font-semibold">
+                      Dockerfile Path (relative path inside the unzipped folder):
+                    </label>
+                    <input
+                      type="text"
+                      id="runDockerfilePath"
+                      name="dockerfilePath"
+                      value={runConfig.dockerfilePath}
+                      onChange={handleRunInputChange}
+                      placeholder="e.g., ./Dockerfile"
+                      className="mt-1 block w-full"
+                      required
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label htmlFor="runFrontendPort" className="block font-semibold">
-                    Frontend Port (Enter the frontend port your app runs on):
-                  </label>
-                  <input
-                    type="number"
-                    id="runFrontendPort"
-                    name="frontendPort"
-                    value={runConfig.frontendPort}
-                    onChange={handleRunInputChange}
-                    placeholder="e.g., 3000"
-                    className="mt-1 block w-full"
-                    required
-                  />
-                </div>
-                <div>
-                  <label htmlFor="runDockerfilePath" className="block font-semibold">
-                    Dockerfile Path (relative path inside the unzipped folder):
-                  </label>
-                  <input
-                    type="text"
-                    id="runDockerfilePath"
-                    name="dockerfilePath"
-                    value={runConfig.dockerfilePath}
-                    onChange={handleRunInputChange}
-                    placeholder="e.g., ./Dockerfile"
-                    className="mt-1 block w-full"
-                    required
-                  />
-                </div>
+              </CardContent>
+              <div className="p-4">
+                <Button onClick={handleImageSubmit} disabled={imageSubmitted}>
+                  {imageSubmitted ? "Image Submitted" : "Submit Docker Image Data"}
+                </Button>
               </div>
-            </CardContent>
-            <div className="p-4">
-              <Button onClick={handleImageSubmit} disabled={imageSubmitted}>
-                {imageSubmitted ? "Image Submitted" : "Submit Docker Image Data"}
-              </Button>
-            </div>
-          </Card>
+            </Card>
+          )}
 
           {(userRole === "admin" || userRole === "client") && (
             <div className="flex justify-end gap-2">
