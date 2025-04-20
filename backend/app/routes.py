@@ -36,8 +36,7 @@ sql_user = os.getenv('MYSQL_USER')
 sql_password = os.getenv('MYSQL_PASSWORD')
 sql_db = os.getenv('MYSQL_DB')
 sql_port = int(os.getenv('MYSQL_PORT'))
-upload_dir="/"
-
+upload_dir=os.getenv("UPLOAD_DIR")
 def get_db_connection():
     return pymysql.connect(
     host=sql_host,
@@ -445,21 +444,19 @@ def upload_file(project_name):
         logging.error('Error uploading files:', exc_info=e)
         return jsonify({'error': 'Error uploading files'}), 500
 
-
 client=docker.from_env()
 
 redis_client=redis.Redis(host=sql_host, port=6379, db=0)
 
 # build a docker image
-@main.route('/projects/<project_name>/image', methods=['GET','POST'])
+@main.route('/projects/<project_name>/image', methods=['GET','POST','DELETE'])
 def create_docker_image(project_name):
     if request.method=='POST':
-        if 'zipFile' not in request.files or "volumes" not in request.form or "frontendPort" not in request.form or "dockerfilePath" not in request.form:
+        if 'zipFile' not in request.files or "frontendPort" not in request.form or "dockerfilePath" not in request.form:
             return jsonify({'error': 'Data missing in request'}), 400
 
         zip_file=request.files['zipFile']
         image_data=request.form
-
 
         if not zip_file.filename:
             return jsonify({'error': 'No selected file'}), 400
@@ -482,17 +479,31 @@ def create_docker_image(project_name):
         redis_client.set(project_name,json.dumps(dict(image_data)))
 
         return jsonify({"taskId": task.id}), 200
+    elif request.method=='GET':
+        image_name=project_name.strip().lower().replace(" ","_")
+        try:
+            image=client.images.get(image_name)
+            if image:
+                return jsonify({"imageBuilt":True}),200
+            else:
+                return jsonify({"imageBuilt":False}),200
+        except:
+            return jsonify({"imageBuilt":False}),400
     else:
-       return "" # implement later
+        image_name=project_name.strip().lower().replace(" ","_")
+        try:
+            client.images.remove(image_name, force=False, noprune=False)
+            return jsonify({"imageDeleted":True}),200
+        except:
+            return jsonify({"imageDeleted":False}),400
 
 @main.route("/jobs/<task_id>", methods=["GET"])
 def get_status(task_id):
-    res=AsyncResult(task_id, app=celery)
-    payload={"status": res.status}
-    if res.status=="PROGRESS":
-        payload.update(res.info or {})
-    elif res.status in ("SUCCESS", "FAILURE"):
-        payload["result"]=res.result
+    res=AsyncResult(task_id,app=celery)
+    completed=res.status in ("SUCCESS","FAILURE")
+    payload={"completed":completed}
+    if completed:
+        payload["success"]=(res.status=="SUCCESS")
     return jsonify(payload)
 
 # get container if running
@@ -514,14 +525,11 @@ def start_container(project_name):
     else:
         return None
     port=container_data["frontendPort"]
-    volumes={k:{"bind":v,"mode":"rw"} for k,v in json.loads(container_data["volumes"]).items() if k and v}
-    
     try:
         container=client.containers.run(
             image=image_name,
             name=image_name,
             ports={port:None},
-            volumes=volumes,
             remove=True,
             detach=True
         )
@@ -552,19 +560,27 @@ def run_project(project_name):
         if not container: return jsonify({'error':'Could not start container'}),400
     host_port=get_frontend_port(container,project_name)
     if not host_port: return jsonify({'error':'Error getting frontend port'}),400
-    redis_client.incr(f'{project_name}-active_users')
     url=f'{sql_host}:{host_port}'
     return jsonify({'url': url})
 
 
 @main.route('/projects/<project_name>/stop', methods=['POST'])
 def stop_project(project_name):
-    active_users=redis_client.get(f'project:{project_name}-active_users')
-    if active_users is None or int(active_users)==0:
-        container=get_running_container(project_name)
-        if container:
-            container.stop()
+    container=get_running_container(project_name)
+    if container:
+        container.stop()
+        return jsonify({"is_stopped":True}),200
     else:
-        redis_client.decr(f'{project_name}-active_users')
-    return 200
+         return jsonify({"is_stopped":False}),400
 
+
+@main.route('/projects/<project_name>/running', methods=['GET'])
+def is_project_running(project_name):
+    container=get_running_container(project_name)
+    if container:
+        host_port=get_frontend_port(container,project_name)
+        if not host_port: return jsonify({'error':'Error getting frontend port'}),400
+        url=f'{sql_host}:{host_port}'
+        return jsonify({'containerRunning':True,'url': url}),200
+    else:
+        return jsonify({'containerRunning':False}),200

@@ -59,9 +59,9 @@ const CollectionDetails = () => {
         );
         const body = await res.json();
         setStatus(body.status);
-        if (["SUCCESS", "FAILURE"].includes(body.status)) {
+        if (body.completed) {
           clearInterval(timer);
-          if (body.status === "SUCCESS") {
+          if (body.success) {
             setImageSubmitted(true);
           } else {
             alert(
