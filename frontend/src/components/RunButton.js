@@ -12,23 +12,54 @@ const RunButton = ({ runData, buildStatus }) => {
     const isBuilding = buildStatus === "PENDING"
     const isBuilt = buildStatus === "SUCCESS"
 
+    const normalize = raw => raw.startsWith('http://') || raw.startsWith('https://') ? raw : `http://${raw}`
+
     useEffect(() => {
-        const checkRunning = async() => {
-            try {
-                const response = await fetch(
-                    `${process.env.REACT_APP_API_BASE_URL}/projects/${runData.projectName}/running`
-                )
-                const data = await response.json()
-                if (data.containerRunning && data.url) {
-                    setProjectUrl(data.url)
-                    setIsRunning(true)
+        let timer
+        const checkRunning = async () => {
+          try {
+            const res = await fetch(
+              `${process.env.REACT_APP_API_BASE_URL}/projects/${runData.projectName}/running`
+            )
+            const body = await res.json()
+            if (body.containerRunning && body.url) {
+              const rawUrl = normalize(body.url)
+              let finalUrl = rawUrl
+              if (isAdmin && loading) {
+                try {
+                  finalUrl = await waitForApp(rawUrl)
+                } catch (err) {
+                  console.error("App readiness timed out, showing URL anyway:", err)
                 }
-            } catch (err) {
-                console.err("Error checking running container:", err)
+              }
+              setProjectUrl(finalUrl)
+              setIsRunning(true)
+              setLoading(false)
+              clearInterval(timer)
             }
+          } catch (err) {
+            console.error("Error checking running container:", err)
+          }
         }
-        checkRunning();
-    }, [runData.projectName])
+    
+        checkRunning()
+        timer = setInterval(checkRunning, 2000)
+        return () => clearInterval(timer)
+      }, [runData.projectName, loading, isAdmin])
+
+      const waitForApp = async (url) => {
+        const maxAttempts = 10
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          try {
+            const res = await fetch(url, { method: 'GET' })
+            if (res.ok) return url
+          } catch {
+            // ignore network errors
+          }
+          await new Promise((r) => setTimeout(r, 1000))
+        }
+        throw new Error('App did not become ready in time')
+      }
 
     const canRun = isBuilt || isRunning
     const disabled = isBuilding || loading || !canRun || !!projectUrl
@@ -40,22 +71,13 @@ const RunButton = ({ runData, buildStatus }) => {
     const handleClick = async () => {
         setLoading(true);
         try {
-            const response = await fetch(
+            await fetch(
                 `${process.env.REACT_APP_API_BASE_URL}/projects/${runData.projectName}/run`,
                 { method: 'GET' }
             );
-            const data = await response.json();
-            if (data.url) {
-                await new Promise (resolve => setTimeout(resolve, 2000));
-                setProjectUrl(data.url);
-                setIsRunning(true);
-            } else {
-                console.error("No URL returned from API:", data);
-            }
         } catch (error) {
             console.error("Error running the project:", error);
-        } finally {
-            setLoading(false);
+            setLoading(false)
         }
     }
 
@@ -82,7 +104,7 @@ const RunButton = ({ runData, buildStatus }) => {
 
     return (
         <div className='flex flex-row items-center gap-4 pt-4'>
-            <button
+            {isAdmin && (<button
                 className={`w-32 py-2 rounded-lg transition duration-300 ${
                     disabled ? 'bg-gray-400 cursor-not-allowed'
                     : 'bg-orange-400 text-white hover:bg-orange-500'
@@ -91,7 +113,13 @@ const RunButton = ({ runData, buildStatus }) => {
                 disabled={disabled}
             >
                 {buttonText}
-            </button>
+            </button>)}
+
+            {!isAdmin && !projectUrl && (
+                <p className='text-gray-500 italic'>
+                    Container isn't currently running right now. Please request for an admin to build/start it when ready.
+                </p>
+            )}
 
             {projectUrl && (
                 <p className='text-lg'>
