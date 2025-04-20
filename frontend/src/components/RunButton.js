@@ -68,7 +68,7 @@ const RunButton = ({ runData, buildStatus }) => {
             );
             const data = await response.json()
             if (data.is_stopped) {
-                setProjectUrl(" ")
+                setProjectUrl("")
                 setIsRunning(false)
             } else {
                 console.error("Failed to stop container:", data)

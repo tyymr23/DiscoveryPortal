@@ -52,18 +52,22 @@ const CollectionDetails = () => {
 
   useEffect(() => {
     if (!taskId) return;
+
     const timer = setInterval(async () => {
       try {
         const res = await fetch(
           `${process.env.REACT_APP_API_BASE_URL}/jobs/${taskId}`
         );
         const body = await res.json();
-        setStatus(body.status);
-        if (body.completed) {
+        if (!body.completed) {
+          setStatus("PENDING");
+        } else {
           clearInterval(timer);
           if (body.success) {
+            setStatus("SUCCESS");
             setImageSubmitted(true);
           } else {
+            setStatus("FAILURE");
             alert(
               "Docker image build failed. Please check your configuration and try again."
             );
@@ -77,6 +81,7 @@ const CollectionDetails = () => {
         );
       }
     }, 2000);
+
     return () => clearInterval(timer);
   }, [taskId]);
 
