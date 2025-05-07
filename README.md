@@ -31,6 +31,7 @@
                 MYSQL_DB=portal
                 MYSQL_PORT=3306
                 PORT=3001
+                UPLOAD_DIR=/
                 # Admin Username and Password
                 # Username: VT_ADMIN
                 # Password: C$-P0rt@l_ADMIN-passWrd
@@ -75,6 +76,7 @@
                 MYSQL_DB=portal
                 MYSQL_PORT=3306
                 PORT=3001
+                UPLOAD_DIR=/
                 # Admin Username and Password
                 # Username: VT_ADMIN
                 # Password: C$-P0rt@l_ADMIN-passWrd
@@ -114,6 +116,7 @@
                 MYSQL_DB=portal
                 MYSQL_PORT=3306
                 PORT=3001
+                UPLOAD_DIR=/
                 # Admin Username and Password
                 # Username: VT_ADMIN
                 # Password: C$-P0rt@l_ADMIN-passWrd
